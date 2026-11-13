@@ -1,20 +1,23 @@
 package com.example.tabtimernotifier;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.text.Text;
 
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Reads server-sent player-list footer text and tracks the two cooldowns locally. */
+/** Reads server-sent player-list footer text and tracks cooldowns locally. */
 public final class TimerTracker {
     private static final Pattern NUKE_LINE = Pattern.compile("(?i)\\bNuke\\s*:\\s*(.*)");
     private static final Pattern CLONE_LINE = Pattern.compile("(?i)\\bClone\\s*:\\s*(.*)");
+    private static final Pattern ACCUMULATE_LINE = Pattern.compile("(?i)\\bAccumulate\\s*:\\s*(.*)");
     private static final Pattern TIME = Pattern.compile("(?i)(\\d+)\\s*m\\s*(\\d+)\\s*s");
     private static final Pattern READY = Pattern.compile("(?i)\\bready\\s*!?");
 
-    private static final Cooldown NUKE = new Cooldown("Nuke", 1.00f);
-    private static final Cooldown CLONE = new Cooldown("Clone", 1.35f);
+    private static final Cooldown NUKE = new Cooldown("Nuke");
+    private static final Cooldown CLONE = new Cooldown("Clone");
+    private static final Cooldown ACCUMULATE = new Cooldown("Accumulate");
 
     private TimerTracker() {}
 
@@ -23,6 +26,7 @@ public final class TimerTracker {
         String normalized = footer.replace('\r', '\n');
         updateFromLine(normalized, NUKE_LINE, NUKE);
         updateFromLine(normalized, CLONE_LINE, CLONE);
+        updateFromLine(normalized, ACCUMULATE_LINE, ACCUMULATE);
     }
 
     private static void updateFromLine(String footer, Pattern linePattern, Cooldown cooldown) {
@@ -45,25 +49,23 @@ public final class TimerTracker {
         long now = System.nanoTime();
         NUKE.tick(now, client);
         CLONE.tick(now, client);
+        ACCUMULATE.tick(now, client);
     }
 
     private static final class Cooldown {
         private final String name;
-        private final float pitch;
         private boolean initialized;
         private boolean active;
         private boolean notified;
         private long readyAtNanos;
 
-        private Cooldown(String name, float pitch) {
+        private Cooldown(String name) {
             this.name = name;
-            this.pitch = pitch;
         }
 
         private void updateTimer(long seconds) {
             long now = System.nanoTime();
             if (seconds > 0) {
-                // Server footer countdowns are authoritative; refresh our local estimate.
                 readyAtNanos = now + seconds * 1_000_000_000L;
                 active = true;
                 notified = false;
@@ -75,7 +77,6 @@ public final class TimerTracker {
 
         private void updateReady() {
             if (!initialized) {
-                // Don't play a false alert just because the mod was installed while ready.
                 initialized = true;
                 active = false;
                 notified = true;
@@ -99,7 +100,7 @@ public final class TimerTracker {
         private void playNotification(MinecraftClient client) {
             if (client.player != null) {
                 IndependentAudio.play(name);
-                client.player.sendMessage(net.minecraft.text.Text.literal(name + " is ready!"), true);
+                client.player.sendMessage(Text.literal(name + " is ready!"), true);
             }
         }
     }
