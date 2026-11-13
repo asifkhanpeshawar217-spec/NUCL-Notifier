@@ -53,7 +53,6 @@ public final class SoundSettingsScreen extends Screen {
 
  @Override
  public void render(DrawContext ctx,int mouseX,int mouseY,float delta) {
-  renderBackground(ctx,mouseX,mouseY,delta);
   int cx=width/2,top=Math.max(35,height/2-105);
   int cardW=Math.min(430,width-30),left=cx-cardW/2;
   ctx.fill(0,0,width,height,0xD9101420);
