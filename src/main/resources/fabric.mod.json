@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "tabtimernotifier",
+  "version": "${version}",
+  "name": "Tab Timer Notifier",
+  "description": "Client-side Nuke and Clone cooldown alerts with independent custom sounds and volume.",
+  "authors": [
+    "ChatGPT"
+  ],
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.example.tabtimernotifier.TabTimerNotifierClient"
+    ]
+  },
+  "mixins": [
+    "tabtimernotifier.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "=1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
