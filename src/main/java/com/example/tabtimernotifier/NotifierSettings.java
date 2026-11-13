@@ -1,19 +1,113 @@
 package com.example.tabtimernotifier;
+
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
+
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 public final class NotifierSettings {
- private static final Path FILE=FabricLoader.getInstance().getConfigDir().resolve("tab-timer-notifier.json");
- public static String nukeFile="", cloneFile="";
- public static float nukeVolume=.85f, cloneVolume=.85f;
- private NotifierSettings(){}
- public static void load(){ if(!Files.exists(FILE))return; try(Reader r=Files.newBufferedReader(FILE)){JsonObject j=JsonParser.parseReader(r).getAsJsonObject(); nukeFile=j.has("nukeFile")?j.get("nukeFile").getAsString():""; cloneFile=j.has("cloneFile")?j.get("cloneFile").getAsString():""; nukeVolume=clamp(j.has("nukeVolume")?j.get("nukeVolume").getAsFloat():.85f); cloneVolume=clamp(j.has("cloneVolume")?j.get("cloneVolume").getAsFloat():.85f);}catch(Exception e){System.err.println("[Tab Timer Notifier] Settings load failed: "+e.getMessage());}}
- public static void save(){JsonObject j=new JsonObject();j.addProperty("nukeFile",nukeFile);j.addProperty("cloneFile",cloneFile);j.addProperty("nukeVolume",nukeVolume);j.addProperty("cloneVolume",cloneVolume);try{Files.createDirectories(FILE.getParent());try(Writer w=Files.newBufferedWriter(FILE)){new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(j,w);}}catch(Exception e){System.err.println("[Tab Timer Notifier] Settings save failed: "+e.getMessage());}}
- public static float clamp(float v){return Math.max(0f,Math.min(1f,v));}
- public static void restoreNuke(){nukeFile="";nukeVolume=.85f;save();}
- public static void restoreClone(){cloneFile="";cloneVolume=.85f;save();}
+    private static final Path CONFIG_DIR = FabricLoader.getInstance().getConfigDir().resolve("tab-timer-notifier");
+    private static final Path FILE = CONFIG_DIR.resolve("settings.json");
+    private static final Path SOUNDS_DIR = CONFIG_DIR.resolve("sounds");
+
+    public static String nukeFile = "";
+    public static String cloneFile = "";
+    public static String accumulateFile = "";
+    public static float nukeVolume = 0.85f;
+    public static float cloneVolume = 0.85f;
+    public static float accumulateVolume = 0.85f;
+
+    private NotifierSettings() {}
+
+    public static void load() {
+        createSoundFolders();
+        if (!Files.exists(FILE)) return;
+
+        try (Reader reader = Files.newBufferedReader(FILE)) {
+            JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
+            nukeFile = stringValue(json, "nukeFile", "");
+            cloneFile = stringValue(json, "cloneFile", "");
+            accumulateFile = stringValue(json, "accumulateFile", "");
+            nukeVolume = clamp(floatValue(json, "nukeVolume", 0.85f));
+            cloneVolume = clamp(floatValue(json, "cloneVolume", 0.85f));
+            accumulateVolume = clamp(floatValue(json, "accumulateVolume", 0.85f));
+
+            // Migrate old absolute paths to just their filename.
+            nukeFile = safeFileName(nukeFile);
+            cloneFile = safeFileName(cloneFile);
+            accumulateFile = safeFileName(accumulateFile);
+        } catch (Exception e) {
+            System.err.println("[Tab Timer Notifier] Settings load failed: " + e.getMessage());
+        }
+    }
+
+    private static String stringValue(JsonObject json, String key, String fallback) {
+        return json.has(key) && !json.get(key).isJsonNull() ? json.get(key).getAsString() : fallback;
+    }
+
+    private static float floatValue(JsonObject json, String key, float fallback) {
+        return json.has(key) ? json.get(key).getAsFloat() : fallback;
+    }
+
+    public static void save() {
+        JsonObject json = new JsonObject();
+        json.addProperty("nukeFile", nukeFile);
+        json.addProperty("cloneFile", cloneFile);
+        json.addProperty("accumulateFile", accumulateFile);
+        json.addProperty("nukeVolume", nukeVolume);
+        json.addProperty("cloneVolume", cloneVolume);
+        json.addProperty("accumulateVolume", accumulateVolume);
+
+        try {
+            Files.createDirectories(FILE.getParent());
+            try (Writer writer = Files.newBufferedWriter(FILE)) {
+                new GsonBuilder().setPrettyPrinting().create().toJson(json, writer);
+            }
+        } catch (Exception e) {
+            System.err.println("[Tab Timer Notifier] Settings save failed: " + e.getMessage());
+        }
+    }
+
+    public static Path soundFolder(String timer) {
+        return SOUNDS_DIR.resolve(timer.toLowerCase());
+    }
+
+    public static Path soundPath(String timer, String fileName) {
+        if (fileName == null || fileName.isBlank()) return null;
+        String safe = safeFileName(fileName);
+        if (safe.isBlank()) return null;
+        return soundFolder(timer).resolve(safe);
+    }
+
+    public static void createSoundFolders() {
+        try {
+            Files.createDirectories(soundFolder("nuke"));
+            Files.createDirectories(soundFolder("clone"));
+            Files.createDirectories(soundFolder("accumulate"));
+        } catch (Exception e) {
+            System.err.println("[Tab Timer Notifier] Could not create sound folders: " + e.getMessage());
+        }
+    }
+
+    public static String safeFileName(String value) {
+        if (value == null || value.isBlank()) return "";
+        return Path.of(value.replace('\\', '/')).getFileName().toString();
+    }
+
+    public static float clamp(float value) {
+        return Math.max(0.0f, Math.min(1.0f, value));
+    }
+
+    public static void restoreAll() {
+        nukeFile = "";
+        cloneFile = "";
+        accumulateFile = "";
+        nukeVolume = cloneVolume = accumulateVolume = 0.85f;
+        save();
+    }
 }
