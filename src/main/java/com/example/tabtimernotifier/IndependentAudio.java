@@ -1,11 +1,127 @@
 package com.example.tabtimernotifier;
+
 import javax.sound.sampled.*;
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 public final class IndependentAudio {
- private IndependentAudio(){}
- public static void play(String type){boolean n=type.equals("Nuke");play(n?NotifierSettings.nukeFile:NotifierSettings.cloneFile,n?NotifierSettings.nukeVolume:NotifierSettings.cloneVolume,n?1.0:1.25);}
- public static void preview(String path,float volume){play(path,volume,1.0);}
- private static void play(String path,float volume,double pitch){if(volume<=0)return;Thread t=new Thread(()->{try{if(path==null||path.isBlank()||!new File(path).isFile()){tone(volume,pitch);return;}try(AudioInputStream in=AudioSystem.getAudioInputStream(new BufferedInputStream(new FileInputStream(path)))){AudioFormat f=in.getFormat();AudioFormat pcm=new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,f.getSampleRate(),16,f.getChannels(),f.getChannels()*2,f.getSampleRate(),false);try(AudioInputStream decoded=AudioSystem.getAudioInputStream(pcm,in)){stream(decoded,pcm,volume);}}}catch(Exception e){System.err.println("[Tab Timer Notifier] Audio playback failed: "+e.getMessage());tone(volume,pitch);}},"TabTimerNotifier-Audio");t.setDaemon(true);t.start();}
- private static void stream(AudioInputStream in,AudioFormat f,float volume)throws Exception{try(SourceDataLine line=(SourceDataLine)AudioSystem.getLine(new DataLine.Info(SourceDataLine.class,f))){line.open(f);line.start();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){for(int i=0;i+1<n;i+=2){short s=(short)((b[i]&255)|(b[i+1]<<8));int v=Math.max(-32768,Math.min(32767,(int)(s*volume)));b[i]=(byte)v;b[i+1]=(byte)(v>>8);}line.write(b,0,n);}line.drain();}}
- private static void tone(float volume,double pitch){try{AudioFormat f=new AudioFormat(44100,16,1,true,false);byte[] b=new byte[29400];for(int i=0;i<b.length/2;i++){double env=1.0-(double)i/(b.length/2);short s=(short)(Math.sin(2*Math.PI*660*pitch*i/44100)*12000*volume*env);b[i*2]=(byte)s;b[i*2+1]=(byte)(s>>8);}try(SourceDataLine l=(SourceDataLine)AudioSystem.getLine(new DataLine.Info(SourceDataLine.class,f))){l.open(f);l.start();l.write(b,0,b.length);l.drain();}}catch(Exception e){System.err.println("[Tab Timer Notifier] No audio output: "+e.getMessage());}}
+    private IndependentAudio() {}
+
+    public static void play(String type) {
+        String timer = type == null ? "" : type.toLowerCase();
+        String file;
+        float volume;
+        double pitch;
+
+        switch (timer) {
+            case "nuke" -> {
+                file = NotifierSettings.nukeFile;
+                volume = NotifierSettings.nukeVolume;
+                pitch = 1.0;
+            }
+            case "accumulate" -> {
+                file = NotifierSettings.accumulateFile;
+                volume = NotifierSettings.accumulateVolume;
+                pitch = 1.5;
+            }
+            default -> {
+                file = NotifierSettings.cloneFile;
+                volume = NotifierSettings.cloneVolume;
+                pitch = 1.25;
+            }
+        }
+        playFile(type, file, volume, pitch);
+    }
+
+    public static void preview(String timer) {
+        String key = timer.toLowerCase();
+        String file;
+        float volume;
+        switch (key) {
+            case "nuke" -> { file = NotifierSettings.nukeFile; volume = NotifierSettings.nukeVolume; }
+            case "accumulate" -> { file = NotifierSettings.accumulateFile; volume = NotifierSettings.accumulateVolume; }
+            default -> { file = NotifierSettings.cloneFile; volume = NotifierSettings.cloneVolume; }
+        }
+        playFile(timer, file, volume, 1.0);
+    }
+
+    private static void playFile(String timer, String fileName, float volume, double pitch) {
+        if (volume <= 0.0f) return;
+
+        Thread thread = new Thread(() -> {
+            try {
+                Path path = NotifierSettings.soundPath(timer, fileName);
+                if (path == null || !Files.isRegularFile(path)) {
+                    tone(volume, pitch);
+                    return;
+                }
+
+                try (AudioInputStream input = AudioSystem.getAudioInputStream(
+                        new BufferedInputStream(Files.newInputStream(path)))) {
+                    AudioFormat source = input.getFormat();
+                    AudioFormat pcm = new AudioFormat(
+                            AudioFormat.Encoding.PCM_SIGNED,
+                            source.getSampleRate(),
+                            16,
+                            source.getChannels(),
+                            source.getChannels() * 2,
+                            source.getSampleRate(),
+                            false
+                    );
+                    try (AudioInputStream decoded = AudioSystem.getAudioInputStream(pcm, input)) {
+                        stream(decoded, pcm, volume);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("[Tab Timer Notifier] Audio playback failed: " + e.getMessage());
+                tone(volume, pitch);
+            }
+        }, "TabTimerNotifier-Audio");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private static void stream(AudioInputStream input, AudioFormat format, float volume) throws Exception {
+        DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+        try (SourceDataLine line = (SourceDataLine) AudioSystem.getLine(info)) {
+            line.open(format);
+            line.start();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                for (int i = 0; i + 1 < count; i += 2) {
+                    short sample = (short) ((buffer[i] & 0xff) | (buffer[i + 1] << 8));
+                    int adjusted = Math.max(-32768, Math.min(32767, (int) (sample * volume)));
+                    buffer[i] = (byte) adjusted;
+                    buffer[i + 1] = (byte) (adjusted >> 8);
+                }
+                line.write(buffer, 0, count);
+            }
+            line.drain();
+        }
+    }
+
+    private static void tone(float volume, double pitch) {
+        try {
+            AudioFormat format = new AudioFormat(44100, 16, 1, true, false);
+            byte[] data = new byte[29400];
+            for (int i = 0; i < data.length / 2; i++) {
+                double envelope = 1.0 - (double) i / (data.length / 2);
+                short sample = (short) (Math.sin(2 * Math.PI * 660 * pitch * i / 44100)
+                        * 12000 * volume * envelope);
+                data[i * 2] = (byte) sample;
+                data[i * 2 + 1] = (byte) (sample >> 8);
+            }
+            try (SourceDataLine line = (SourceDataLine) AudioSystem.getLine(
+                    new DataLine.Info(SourceDataLine.class, format))) {
+                line.open(format);
+                line.start();
+                line.write(data, 0, data.length);
+                line.drain();
+            }
+        } catch (Exception e) {
+            System.err.println("[Tab Timer Notifier] No audio output: " + e.getMessage());
+        }
+    }
 }
